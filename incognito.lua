@@ -307,5 +307,11 @@ ThemeManager:ApplyToTab(Tabs.Misc)
 
 Library:SetWatermark("knife duels | closet")
 Library.ToggleKeybind = Enum.KeyCode.RightShift
+game:GetService("Players").LocalPlayer.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.Started then
+        task.wait(8) -- wait for new place to load
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/larpsent/incognito/refs/heads/main/incognito.lua"))()
+    end
+end)
 
 print("[knife duels] ui loaded")
