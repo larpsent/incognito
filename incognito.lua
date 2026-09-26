@@ -310,7 +310,7 @@ Library.ToggleKeybind = Enum.KeyCode.RightShift
 MatchController.LocalMatchStateChanged:Connect(function(newState)
     if newState == nil then
         task.wait(2)
-        loadstring(game:HttpGet("YOUR_RAW_SCRIPT_URL"))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/larpsent/incognito/refs/heads/main/incognito.lua"))()
     end
 end)
 
