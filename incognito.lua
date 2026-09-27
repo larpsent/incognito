@@ -194,6 +194,89 @@ RunService.Heartbeat:Connect(function()
         end
     end
 end)
+
+-- ── Silent Aim ────────────────────────────────────────────────────────────────
+local SA = {
+    enabled = false,
+    fov     = 400,
+    part    = "Head",
+}
+
+local cam = workspace.CurrentCamera
+
+local function getCenter()
+    return cam.ViewportSize / 2
+end
+
+local function getClosest()
+    local best, bestDist = nil, SA.fov
+    local myChar = lp.Character
+    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == lp then continue end
+        local char = p.Character
+        if not char then continue end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then continue end
+        local part = char:FindFirstChild(SA.part)
+            or char:FindFirstChild("HumanoidRootPart")
+        if not part then continue end
+
+        local sp, onScreen = cam:WorldToViewportPoint(part.Position)
+        if not onScreen or sp.Z <= 0 then continue end
+        local d = (getCenter() - Vector2.new(sp.X, sp.Y)).Magnitude
+        if d >= bestDist then continue end
+
+        -- LOS check
+        if myHRP then
+            local dir = part.Position - myHRP.Position
+            local rp  = RaycastParams.new()
+            rp.FilterDescendantsInstances = { myChar, char }
+            rp.FilterType = Enum.RaycastFilterType.Exclude
+            if workspace:Raycast(myHRP.Position, dir, rp) then continue end
+        end
+
+        best, bestDist = part, d
+    end
+    return best
+end
+
+local restoring = false
+
+local function snapCameraToTarget(targetPart)
+    if restoring then return end
+    local origin = cam.CFrame.Position
+    local dir    = targetPart.Position - origin
+    if dir.Magnitude < 0.001 then return end
+
+    local savedCF   = cam.CFrame
+    local savedType = cam.CameraType
+    restoring       = true
+
+    cam.CameraType = Enum.CameraType.Scriptable
+    cam.CFrame     = CFrame.lookAt(origin, targetPart.Position)
+
+    RunService.RenderStepped:Wait()
+
+    cam.CFrame     = savedCF
+    cam.CameraType = savedType
+    restoring      = false
+end
+
+-- hook AttemptThrow — snap camera before throw reads direction
+local _origAttemptThrow = KnifeController.AttemptThrow
+KnifeController.AttemptThrow = function(self, p120)
+    if SA.enabled and not restoring then
+        local target = getClosest()
+        if target then
+            task.spawn(snapCameraToTarget, target)
+            task.wait()
+        end
+    end
+    return _origAttemptThrow(self, p120)
+end
+
 -- ── esp ──────────────────────────────────────────────────────────────────────
 local esp_folder = Instance.new("Folder")
 esp_folder.Name = "KnifeESP"
@@ -276,6 +359,24 @@ Groups.Trigger:AddSlider("TriggerDelay", {
     Callback = function(v) CFG.trigger_delay = v end
 })
 
+Groups.Trigger:AddToggle("SAEnabled", {
+    Text     = "Silent Aim",
+    Default  = false,
+    Callback = function(v) SA.enabled = v end,
+})
+Groups.Trigger:AddSlider("SAFOV", {
+    Text     = "FOV (px from crosshair)",
+    Min = 10, Max = 800, Default = 400, Rounding = 0,
+    Callback = function(v) SA.fov = v end,
+})
+Groups.Trigger:AddDropdown("SAPart", {
+    Text    = "Target Part",
+    Values  = { "Head", "HumanoidRootPart" },
+    Default = "Head",
+    Callback = function(v) SA.part = v end,
+})
+
+
 -- visual — esp
 Groups.ESP:AddToggle("ESPEnabled", {
     Text = "Enabled",
@@ -307,11 +408,24 @@ ThemeManager:ApplyToTab(Tabs.Misc)
 
 Library:SetWatermark("knife duels | closet")
 Library.ToggleKeybind = Enum.KeyCode.RightShift
-game:GetService("Players").LocalPlayer.OnTeleport:Connect(function(state)
+local TeleportService = game:GetService("TeleportService")
+
+local SCRIPT_URL = "https://raw.githubusercontent.com/larpsent/incognito/refs/heads/main/incognito.lua"
+
+local function queueAutoExec()
+    -- queue_on_teleport is the executor UNC function — fires the script
+    -- in the destination place before any LocalScripts run there.
+    -- OnTeleport alone is unreliable on modern Roblox (fires late / not at all).
+    pcall(queue_on_teleport, game:HttpGet(SCRIPT_URL))
+end
+
+-- queue immediately on inject so it survives the next teleport
+queueAutoExec()
+
+-- belt-and-suspenders: re-queue if the player teleports again this session
+lp.OnTeleport:Connect(function(state)
     if state == Enum.TeleportState.Started then
-        task.wait(1) -- wait for new place to load
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/larpsent/incognito/refs/heads/main/incognito.lua"))()
+        queueAutoExec()
     end
 end)
-
 print("[knife duels] ui loaded")
