@@ -195,7 +195,11 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ── Silent Aim ────────────────────────────────────────────────────────────────
+-- ── Silent Aim v3 — CombatNetClient:Throw hook ───────────────────────────────
+-- hooks the comm layer directly, replaces both CFrame and direction
+-- server receives matching CF+dir pointing at target
+-- CameraType never changes, camera never moves, zero client tells
+
 local SA = {
     enabled = false,
     fov     = 400,
@@ -228,7 +232,6 @@ local function getClosest()
         local d = (getCenter() - Vector2.new(sp.X, sp.Y)).Magnitude
         if d >= bestDist then continue end
 
-        -- LOS check
         if myHRP then
             local dir = part.Position - myHRP.Position
             local rp  = RaycastParams.new()
@@ -242,41 +245,30 @@ local function getClosest()
     return best
 end
 
-local restoring = false
+-- grab CombatNetClient — already required in KnifeController
+local CombatNetClient = require(
+    lp.PlayerScripts.Controllers.Combat:WaitForChild("CombatNetClient")
+)
 
-local function snapCameraToTarget(targetPart)
-    if restoring then return end
-    local origin = cam.CFrame.Position
-    local dir    = targetPart.Position - origin
-    if dir.Magnitude < 0.001 then return end
-
-    local savedCF   = cam.CFrame
-    local savedType = cam.CameraType
-    restoring       = true
-
-    cam.CameraType = Enum.CameraType.Scriptable
-    cam.CFrame     = CFrame.lookAt(origin, targetPart.Position)
-
-    RunService.RenderStepped:Wait()
-
-    cam.CFrame     = savedCF
-    cam.CameraType = savedType
-    restoring      = false
-end
-
--- hook AttemptThrow — snap camera before throw reads direction
-local _origAttemptThrow = KnifeController.AttemptThrow
-KnifeController.AttemptThrow = function(self, p120)
-    if SA.enabled and not restoring then
+local _origThrow = CombatNetClient.Throw
+CombatNetClient.Throw = function(self, cf, direction, guid, flags)
+    if SA.enabled then
         local target = getClosest()
         if target then
-            task.spawn(snapCameraToTarget, target)
-            task.wait()
+            local origin  = cf.Position
+            local dest    = target.Position
+            local newDir  = (dest - origin)
+            if newDir.Magnitude > 0.001 then
+                newDir = newDir.Unit
+                -- build a new CFrame that matches the deflected direction
+                -- keep position identical so origin sanity check passes
+                local newCF = CFrame.lookAt(origin, origin + newDir)
+                return _origThrow(self, newCF, newDir, guid, flags)
+            end
         end
     end
-    return _origAttemptThrow(self, p120)
+    return _origThrow(self, cf, direction, guid, flags)
 end
-
 -- ── esp ──────────────────────────────────────────────────────────────────────
 local esp_folder = Instance.new("Folder")
 esp_folder.Name = "KnifeESP"
